@@ -1535,6 +1535,9 @@ Details:
 
 **Associated Information:**
 - The course admin or instructor shall be able to cancel the use case at any time prior to submitting it.
+- Constraints left by deactivation (UC-STU-deactivate-student): she was never removed from her team, so reactivation returns her to the same team with no team assignment needed; if she was moved or her team was deleted while she was deactivated, she returns with whatever team she has then.
+- From her reactivation on, her teammates are again asked to evaluate her and she again owes weekly activity reports and peer evaluations (BR-student-lifecycle, BR-submission-owed). Weeks that passed while she was deactivated are not owed retroactively, by her or about her, since their submission windows have closed (BR-evaluation-submission-window).
+- Any session she held before deactivation already ended; she logs in again.
 
 **Related Use Cases:** UC-STU-delete-student: Delete a student; UC-STU-deactivate-student: Deactivate a student
 **Assumptions:**
