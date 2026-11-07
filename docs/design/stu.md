@@ -67,7 +67,7 @@ classDiagram
 | Deactivate button and confirmation; the Status switch can only turn a student on | change | [`frontend/src/pages/students/EditStudentForm.vue`](../../frontend/src/pages/students/EditStudentForm.vue) |
 | `EvaluationService.addPeerEvaluation` and `updatePeerEvaluation` refuse a deactivated evaluatee (`PeerEvaluationIllegalArgumentException` → `400`) | change | [`evaluation/EvaluationService.java`](../../backend/src/main/java/team/projectpulse/evaluation/EvaluationService.java) |
 | `EvaluationService.generateWeeklyPeerEvaluationReportForSection` keeps a deactivated student only for a week she was rated | change | same file |
-| Peer-evaluation form lists only active teammates, and submits with `Promise.allSettled` so one refused rating (9a) does not hide the saved ones | change | [`frontend/src/pages/evaluations/SubmitTeamsEvaluations.vue`](../../frontend/src/pages/evaluations/SubmitTeamsEvaluations.vue) |
+| Peer-evaluation form lists only active teammates, in edit mode too (a stored rating of a teammate deactivated since is left off, since its edit would be refused), and submits with `Promise.allSettled` so one refused rating (9a) does not hide the saved ones. When any rating is refused, the form reloads from the server to show what was stored, warns that some were not saved, and sends no submission confirmation email | change | [`frontend/src/pages/evaluations/SubmitTeamsEvaluations.vue`](../../frontend/src/pages/evaluations/SubmitTeamsEvaluations.vue) |
 
 ## Sequence
 
