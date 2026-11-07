@@ -16,6 +16,8 @@
     <el-form-item label="Status:" prop="enabled">
       <el-switch
         v-model="studentBeingEdited.enabled"
+        :disabled="loadedEnabled"
+        data-cy="student-status-switch"
         inline-prompt
         active-text="Enabled"
         inactive-text="Disabled"
@@ -35,6 +37,16 @@
       <el-input v-model="studentBeingEdited.teamName" disabled></el-input>
     </el-form-item>
     <div style="display: flex; justify-content: end">
+      <el-button
+        v-if="loadedEnabled"
+        type="danger"
+        plain
+        data-cy="deactivate-student"
+        :loading="deactivating"
+        @click="confirmDeactivation()"
+      >
+        Deactivate
+      </el-button>
       <el-button @click="$emit('close-dialog')"> Cancel </el-button>
       <el-button type="primary" @click="updateExistingStudent()"> Confirm </el-button>
     </div>
@@ -42,11 +54,11 @@
 </template>
 
 <script setup lang="ts">
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import type { Student } from '@/apis/student/types'
 import type { FormInstance } from 'element-plus'
-import { findStudentById, updateStudent } from '@/apis/student'
-import { ref, onMounted } from 'vue'
+import { deactivateStudent, findStudentById, updateStudent } from '@/apis/student'
+import { h, ref, onMounted } from 'vue'
 
 const { studentId } = defineProps(['studentId'])
 const emit = defineEmits(['close-dialog'])
@@ -63,6 +75,13 @@ const studentBeingEdited = ref<Student>({
 })
 
 const studentForm = ref<FormInstance>() // Form reference
+
+// The student's status as loaded, not as edited. Deactivation goes only through the Deactivate button and its
+// confirmation (UC-STU-deactivate-student), so the Status switch is locked while she is active and can only turn
+// a deactivated student back on (transitional, until UC-STU-reactivate-student; OI-65). The button is offered
+// only while she is active (3a).
+const loadedEnabled = ref(false)
+const deactivating = ref(false)
 
 // Validation rules
 const rules = {
@@ -98,6 +117,49 @@ async function loadStudent(studentId: number) {
   studentBeingEdited.value.lastName = result.data.lastName
   studentBeingEdited.value.email = result.data.email
   studentBeingEdited.value.teamName = result.data.teamName
+  loadedEnabled.value = result.data.enabled === true
+}
+
+async function confirmDeactivation() {
+  const fullName = `${studentBeingEdited.value.firstName} ${studentBeingEdited.value.lastName}`
+
+  // Step 4: the consequences from the use case's Associated Information, a warning, and a confirmation
+  try {
+    await ElMessageBox.confirm(
+      h('div', { 'data-cy': 'deactivate-consequences' }, [
+        h('p', `Deactivate ${fullName}?`),
+        h('ul', { style: 'padding-left: 18px; margin: 8px 0' }, [
+          h(
+            'li',
+            'She will no longer be able to log in or submit weekly activity reports and peer evaluations.'
+          ),
+          h('li', 'Her account, her submitted work, and her team membership are kept.'),
+          h('li', 'If she is logged in, her session ends at her next request.'),
+          h('li', 'Her teammates are no longer asked to evaluate her.'),
+          h('li', 'This is not a deletion: the account can be reactivated later.')
+        ])
+      ]),
+      'Deactivate student',
+      { type: 'warning', confirmButtonText: 'Deactivate', cancelButtonText: 'Cancel' }
+    )
+  } catch {
+    return // 5a: cancelled, nothing sent
+  }
+
+  deactivating.value = true
+  try {
+    await deactivateStudent(studentBeingEdited.value.id as number)
+    ElMessage.success(`${fullName} has been deactivated.`)
+    emit('close-dialog')
+  } catch (error) {
+    // 6a: deactivated since the dialog opened. The shared Axios instance has already shown the server's message;
+    // close and let the list reload so it shows her real status. Any other error is handled there too.
+    if ((error as { response?: { status?: number } })?.response?.status === 409) {
+      emit('close-dialog')
+    }
+  } finally {
+    deactivating.value = false
+  }
 }
 
 onMounted(() => {
@@ -115,7 +177,6 @@ async function updateExistingStudent() {
     lastName: studentBeingEdited.value.lastName,
     email: studentBeingEdited.value.email
   }
-  console.log(updatedStudent)
   // Call the API to update the user
   await updateStudent(updatedStudent)
 

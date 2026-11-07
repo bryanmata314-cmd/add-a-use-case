@@ -28,6 +28,8 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.catchThrowable;
+import team.projectpulse.system.exception.StudentAlreadyDeactivatedException;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.*;
@@ -174,7 +176,63 @@ class StudentServiceTest {
         assertThat(result.getLastName()).isEqualTo(update.getLastName());
         assertThat(result.getEmail()).isEqualTo(update.getEmail());
 //        assertThat(result.getRoles()).isEqualTo(update.getRoles());
-        assertThat(result.isEnabled()).isEqualTo(update.isEnabled());
+        // The generic update never deactivates: that goes only through deactivateStudent, behind a confirmation
+        assertThat(result.isEnabled()).isTrue();
+    }
+
+    @Test
+    void testInstructorReactivatesStudentThroughTheGenericUpdate() {
+        // Given: transitional, until UC-STU-reactivate-student has its own endpoint (OI-65)
+        Student john = this.students.get(0);
+        john.setEnabled(false);
+        Student update = new Student("john", "John", "Smith", "j.smith@abc.edu", "", true, "student");
+        given(this.studentRepository.findById(1)).willReturn(Optional.of(john));
+        given(this.studentRepository.save(any(Student.class))).willReturn(john);
+
+        Instructor instructor = new Instructor();
+        instructor.setRoles("instructor");
+        MyUserPrincipal myUserPrincipal = new MyUserPrincipal(instructor);
+        SecurityContext securityContext = SecurityContextHolder.createEmptyContext();
+        securityContext.setAuthentication(new UsernamePasswordAuthenticationToken(myUserPrincipal, null, myUserPrincipal.getAuthorities()));
+        SecurityContextHolder.setContext(securityContext);
+
+        // When
+        Student result = this.studentService.updateStudent(1, update);
+
+        // Then
+        assertThat(result.isEnabled()).isTrue();
+    }
+
+    @Test
+    void testDeactivateStudent() {
+        // Given
+        Student john = this.students.get(0);
+        given(this.studentRepository.findById(1)).willReturn(Optional.of(john));
+        given(this.studentRepository.save(john)).willReturn(john);
+
+        // When
+        Student result = this.studentService.deactivateStudent(1);
+
+        // Then
+        assertThat(result.isEnabled()).isFalse();
+        verify(this.studentRepository, times(1)).save(john);
+    }
+
+    @Test
+    void testDeactivateStudentWhoIsAlreadyDeactivated() {
+        // Given: extension 6a
+        Student john = this.students.get(0);
+        john.setEnabled(false);
+        given(this.studentRepository.findById(1)).willReturn(Optional.of(john));
+
+        // When
+        Throwable throwable = catchThrowable(() -> this.studentService.deactivateStudent(1));
+
+        // Then
+        assertThat(throwable)
+                .isInstanceOf(StudentAlreadyDeactivatedException.class)
+                .hasMessage("This student is already deactivated.");
+        verify(this.studentRepository, never()).save(any(Student.class));
     }
 
     @Test

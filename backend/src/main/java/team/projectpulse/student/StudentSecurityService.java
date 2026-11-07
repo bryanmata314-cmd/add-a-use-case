@@ -7,7 +7,8 @@ import org.springframework.stereotype.Service;
 /**
  * Answers the questions a route asks about one named student: is that student the caller herself
  * ({@code isStudentSelf}), and is the caller an instructor of that student's course section
- * ({@code isCurrentUserInstructorOfStudentSection}).
+ * ({@code isCurrentUserInstructorOfStudentSection}), and is the caller the course admin of that student's course
+ * ({@code isCurrentUserAdminOfStudentCourse}).
  *
  * <p>Every check fails closed: an id that names no row, or a link not yet established, is denied rather than
  * throwing. These methods run inside an {@code AuthorizationManager}, upstream of the {@code DispatcherServlet},
@@ -45,6 +46,26 @@ public class StudentSecurityService {
         }
         return student.getSection().getInstructors().stream()
                 .anyMatch(instructor -> instructor.getId().equals(instructorIdFromJwt));
+    }
+
+    /**
+     * Check if the caller is the course admin of the course the student's course section belongs to
+     * (BR-student-lifecycle). Compares ids, not roles: the admin of another course holds {@code ROLE_instructor}
+     * through the role hierarchy and is still denied.
+     *
+     * @param studentId the id of the student we need to access, this is NOT the current user's Id
+     */
+    public boolean isCurrentUserAdminOfStudentCourse(Integer studentId) {
+        Integer userIdFromJwt = this.userUtils.getUserId();
+        if (userIdFromJwt == null) {
+            return false;
+        }
+        return this.studentRepository.findById(studentId)
+                .map(Student::getSection)
+                .map(section -> section.getCourse())
+                .map(course -> course.getCourseAdmin())
+                .map(admin -> userIdFromJwt.equals(admin.getId()))
+                .orElse(false);
     }
 
 }

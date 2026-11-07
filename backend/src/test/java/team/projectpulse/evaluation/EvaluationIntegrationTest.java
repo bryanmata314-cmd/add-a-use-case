@@ -6,6 +6,8 @@ import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import team.projectpulse.AbstractIntegrationTest;
 import team.projectpulse.evaluation.dto.PeerEvaluationDto;
 import team.projectpulse.evaluation.dto.RatingDto;
+import team.projectpulse.student.Student;
+import team.projectpulse.student.StudentRepository;
 import team.projectpulse.system.StatusCode;
 import org.hamcrest.Matchers;
 import org.json.JSONObject;
@@ -33,6 +35,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @DisplayName("Integration tests for Evaluation API endpoints")
 public class EvaluationIntegrationTest extends AbstractIntegrationTest {
@@ -58,6 +61,9 @@ public class EvaluationIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     EntityManager entityManager;
+
+    @Autowired
+    StudentRepository studentRepository;
 
     String adminBingyangToken;
 
@@ -99,7 +105,40 @@ public class EvaluationIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void testStudentJohnCannotRateADeactivatedTeammateButHisOtherRatingsSave() throws Exception {
+        // UC-EVA-submit-evaluation 9a: Eric (5) is deactivated; John (4) submits ratings of Eric and of Jerry (6)
+        // in the same submission, one request per evaluatee as the form sends them.
+        List<RatingDto> ratingDtos = List.of(
+                new RatingDto(null, 1, 4.0), new RatingDto(null, 2, 9.0), new RatingDto(null, 3, 7.0),
+                new RatingDto(null, 4, 10.0), new RatingDto(null, 5, 5.0), new RatingDto(null, 6, 6.0));
 
+        LocalDate fixedDate = LocalDate.of(2023, 9, 15); // 2023-W37, so 2023-W36 is the open week
+        Clock fixedClock = Clock.fixed(fixedDate.atStartOfDay(ZoneId.systemDefault()).toInstant(), ZoneId.systemDefault());
+        given(this.clock.instant()).willReturn(fixedClock.instant());
+        given(this.clock.getZone()).willReturn(fixedClock.getZone());
+
+        Student eric = this.studentRepository.findById(5).orElseThrow();
+        eric.setEnabled(false);
+        this.studentRepository.saveAndFlush(eric);
+
+        String ofEric = this.jsonMapper.writeValueAsString(new PeerEvaluationDto(null, "2023-W36", 4, "John Smith", 5, "Eric Hudson", ratingDtos, 41.0, "Good job", "Keep it up", null, null));
+        String ofJerry = this.jsonMapper.writeValueAsString(new PeerEvaluationDto(null, "2023-W36", 4, "John Smith", 6, "Jerry Moon", ratingDtos, 41.0, "Good job", "Keep it up", null, null));
+
+        this.mockMvc.perform(post(this.baseUrl + "/evaluations").contentType(MediaType.APPLICATION_JSON).content(ofEric).accept(MediaType.APPLICATION_JSON).header(HttpHeaders.AUTHORIZATION, this.studentJohnToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.flag").value(false))
+                .andExpect(jsonPath("$.code").value(StatusCode.INVALID_ARGUMENT))
+                .andExpect(jsonPath("$.message").value("Eric has been deactivated and is no longer evaluated."));
+
+        this.mockMvc.perform(post(this.baseUrl + "/evaluations").contentType(MediaType.APPLICATION_JSON).content(ofJerry).accept(MediaType.APPLICATION_JSON).header(HttpHeaders.AUTHORIZATION, this.studentJohnToken))
+                .andExpect(jsonPath("$.flag").value(true))
+                .andExpect(jsonPath("$.code").value(StatusCode.SUCCESS));
+
+        assertThat(this.evaluationRepository.findByWeekAndEvaluatorIdAndEvaluateeId("2023-W36", 4, 5)).isEmpty();
+        assertThat(this.evaluationRepository.findByWeekAndEvaluatorIdAndEvaluateeId("2023-W36", 4, 6)).isPresent();
+    }
+
+    @Test
     void testStudentJohnAddEvaluation() throws Exception {
         List<RatingDto> ratingDtos = List.of(
                 new RatingDto(null, 1, 4.0),

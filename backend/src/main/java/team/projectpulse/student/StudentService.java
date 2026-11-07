@@ -4,6 +4,7 @@ import team.projectpulse.section.Section;
 import team.projectpulse.section.SectionRepository;
 import team.projectpulse.system.UserUtils;
 import team.projectpulse.system.exception.ObjectNotFoundException;
+import team.projectpulse.system.exception.StudentAlreadyDeactivatedException;
 import team.projectpulse.user.userinvitation.UserInvitationService;
 import jakarta.transaction.Transactional;
 import org.springframework.data.domain.Page;
@@ -116,13 +117,37 @@ public class StudentService {
 
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 
-        // If the user is an admin, then the user can update all the fields
-        if (authentication.getAuthorities().stream().anyMatch(grantedAuthority -> grantedAuthority.getAuthority().equals("ROLE_instructor"))) {
-            oldStudent.setEnabled(update.isEnabled());
-//            oldStudent.setRoles(update.getRoles());
+        // An instructor may reactivate a student here, but never deactivate one: deactivation goes only through
+        // deactivateStudent, which UC-STU-deactivate-student puts behind a consequences warning and a confirmation.
+        // StudentDto.enabled is a primitive, so a body that omits it reads as false; never applying false is what
+        // keeps a profile edit from silently deactivating anyone. The reactivating half is transitional, until
+        // UC-STU-reactivate-student gets its own endpoint (OI-65).
+        if (authentication.getAuthorities().stream().anyMatch(grantedAuthority -> grantedAuthority.getAuthority().equals("ROLE_instructor"))
+                && !oldStudent.isEnabled() && update.isEnabled()) {
+            oldStudent.setEnabled(true);
         }
 
         return this.studentRepository.save(oldStudent);
+    }
+
+    /**
+     * Deactivates a student (UC-STU-deactivate-student): she can no longer log in, and a token she already holds
+     * stops working at her next request (FR-SEC-active-account). Her team membership, her weekly activity reports,
+     * and the peer evaluations by and about her are all kept (BR-student-lifecycle).
+     *
+     * <p>Who may call this is decided by the route rule, which admits only an instructor of her course section or
+     * the course admin of her course; the route carries no other id, so there is no second scope to check here.
+     *
+     * @throws StudentAlreadyDeactivatedException extension 6a: she was deactivated after the caller viewed her
+     */
+    public Student deactivateStudent(Integer studentId) {
+        Student student = this.studentRepository.findById(studentId)
+                .orElseThrow(() -> new ObjectNotFoundException("student", studentId));
+        if (!student.isEnabled()) {
+            throw new StudentAlreadyDeactivatedException();
+        }
+        student.setEnabled(false);
+        return this.studentRepository.save(student);
     }
 
     public void deleteStudent(Integer studentId) {
