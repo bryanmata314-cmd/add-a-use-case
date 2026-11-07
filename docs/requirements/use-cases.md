@@ -2364,7 +2364,7 @@ Report generating algorithm: For each individual criterion score (e.g., Quality 
 
 **Priority:** High
 **Frequency of Use:** Approximately 2 users, average of 1 usage per week.
-**Business Rules:** BR-section-scoped-access (the instructor may generate the report only for a course section she is assigned to), BR-evaluation-private-comment, BR-submission-owed (who has not turned in the peer evaluation)
+**Business Rules:** BR-section-scoped-access (the instructor may generate the report only for a course section she is assigned to), BR-evaluation-private-comment, BR-submission-owed (who has not turned in the peer evaluation), BR-student-lifecycle (which deactivated students appear)
 
 **Associated Information:**
 
@@ -2374,6 +2374,7 @@ Report generating parameters:
 - Sorting criteria: by default, sort by last name in ascending order.
 - Pagination: Not needed.
 - Format of the generated report: HTML.
+- Students included: every student on a team whose account is active, and a deactivated student only for a week in which she received at least one peer evaluation, so a student who withdrew stays on the record for the weeks she was rated and leaves the report afterwards (BR-student-lifecycle).
 
 An example of the generated report:
 
