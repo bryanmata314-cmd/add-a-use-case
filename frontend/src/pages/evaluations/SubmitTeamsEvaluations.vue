@@ -135,13 +135,7 @@ import {
   sendPeerEvaluationSubmissionConfirmationEmail
 } from '@/apis/evaluation'
 import { ElMessage } from 'element-plus'
-import type {
-  FetchPeerEvaluationsResponse,
-  PeerEvaluation,
-  Rating,
-  SubmitPeerEvaluationResponse,
-  UpdatePeerEvaluationResponse
-} from '@/apis/evaluation/types'
+import type { FetchPeerEvaluationsResponse, PeerEvaluation, Rating } from '@/apis/evaluation/types'
 
 const previousWeek = ref<string>('')
 const previousWeekRange = ref<string>('')
@@ -178,11 +172,11 @@ onMounted(async () => {
   loading.value = false
 })
 
-// Load activities based on the search criteria
+// Load the teammates to evaluate. A deactivated teammate is not asked for (UC-EVA-submit-evaluation step 2,
+// BR-student-lifecycle); the server refuses a rating of her anyway (9a).
 async function loadStudents() {
-  // On the back end, the page number starts from 0, so subtract 1 here
   const result: FindStudentByTeamIdResponse = await findStudentsByTeamId(teamId.value)
-  students.value = result.data
+  students.value = result.data.filter((student) => student.enabled !== false)
 }
 
 // Load criteria information
@@ -202,9 +196,11 @@ async function prepareStartingPeerEvaluations() {
     previousWeek.value
   )
 
-  // If the student has already submitted evaluations for the current week, load them
+  // If the student has already submitted evaluations for the current week, load them, leaving out any of a
+  // teammate deactivated since: an edit of that rating would be refused (9a)
   if (result.data.length > 0) {
-    peerEvalutions.value = result.data
+    const activeIds = new Set(students.value.map((student) => student.id))
+    peerEvalutions.value = result.data.filter((evaluation) => activeIds.has(evaluation.evaluateeId))
     isNewSubmission = false
   } else {
     // If not, create a new set of evaluations
@@ -225,18 +221,41 @@ async function prepareStartingPeerEvaluations() {
   }
 }
 
+// Each rating is its own request and the server judges each alone, so one refused rating (9a: a teammate
+// deactivated while this page was open) must not hide the ones that saved. When any is refused, the shared
+// Axios instance has already shown why; reload the form from the server so it shows what was stored and no
+// longer lists her.
+async function saveAll(
+  save: (evaluation: PeerEvaluation) => Promise<{ data: PeerEvaluation }>
+): Promise<boolean> {
+  const results = await Promise.allSettled(peerEvalutions.value!.map(save))
+  if (results.every((r) => r.status === 'fulfilled')) {
+    peerEvalutions.value = results.map(
+      (r) => (r as PromiseFulfilledResult<{ data: PeerEvaluation }>).value.data
+    )
+    return true
+  }
+  await loadStudents()
+  await prepareStartingPeerEvaluations()
+  return false
+}
+
 // Submit peer evaluations
 async function submitPeerEvaluations() {
   if (peerEvalutions.value) {
-    const submitPromises = peerEvalutions.value.map(async (evaluation) => {
-      const result: SubmitPeerEvaluationResponse = await submitEvaluation(evaluation)
-      return result.data
-    })
     isLoading.value = true
-    peerEvalutions.value = await Promise.all(submitPromises) // Wait for all promises to resolve
+    let allSaved: boolean
+    try {
+      allSaved = await saveAll(submitEvaluation)
+    } finally {
+      isLoading.value = false
+    }
+    if (!allSaved) {
+      ElMessage.warning('Some peer evaluations were not saved. The form shows what was saved.')
+      return
+    }
     isNewSubmission = false // Change to update mode
     ElMessage.success('Peer evaluations submitted successfully')
-    isLoading.value = false
 
     // Send an submission confirmation email to the submitter
     await sendPeerEvaluationSubmissionConfirmationEmail(previousWeekRange.value)
@@ -247,15 +266,18 @@ async function submitPeerEvaluations() {
 // Update peer evaluations
 async function updatePeerEvaluations() {
   if (peerEvalutions.value) {
-    const submitPromises = peerEvalutions.value.map(async (evaluation) => {
-      const result: UpdatePeerEvaluationResponse = await updateEvaluation(evaluation)
-      return result.data
-    })
-
     isLoading.value = true
-    peerEvalutions.value = await Promise.all(submitPromises) // Wait for all promises to resolve
-    ElMessage.success('Peer evaluations updated successfully')
-    isLoading.value = false
+    let allSaved: boolean
+    try {
+      allSaved = await saveAll(updateEvaluation)
+    } finally {
+      isLoading.value = false
+    }
+    if (allSaved) {
+      ElMessage.success('Peer evaluations updated successfully')
+    } else {
+      ElMessage.warning('Some peer evaluations were not saved. The form shows what was saved.')
+    }
   }
 }
 </script>
