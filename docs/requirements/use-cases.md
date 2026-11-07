@@ -1452,7 +1452,7 @@ Details:
 **Created By:**
 **Date Created:**
 **Primary Actor:** course admin / instructor
-**Secondary Actors:** student
+**Secondary Actors:** —
 **Trigger:** The course admin or instructor indicates to deactivate a student.
 **Description:** The course admin or instructor wants to deactivate a student — for example, when a student withdraws from the course section — so that the student no longer has access to the system while her submitted work is retained.
 
@@ -1488,12 +1488,17 @@ Details:
 
 **Priority:** Low
 **Frequency of Use:** Rare. Occurs occasionally when a student withdraws from a course section.
-**Business Rules:** BR-student-lifecycle, BR-section-scoped-access
+**Business Rules:** BR-student-lifecycle, BR-section-scoped-access, BR-submission-owed
 
 **Associated Information:**
 - Consequence of the deactivation: The student will no longer be able to log in or submit weekly activity reports and peer evaluations, but the student's account and her previously submitted work are kept in the system. Deactivation will NOT remove the student from the system, and the account can be reactivated in the future (UC-STU-reactivate-student: Reactivate a student). This is distinct from deletion (UC-STU-delete-student: Delete a student), which is a physical, unrecoverable delete. The course admin or instructor shall be able to cancel the use case at any time prior to submitting it.
+- Effect on a student who is logged in: her session ends at her next request; a token issued before the deactivation is not honored (FR-SEC-active-account).
+- Effect on her team: she stays a member of her team (BR-student-lifecycle). Her weekly activity reports, the peer evaluations she wrote, and the peer evaluations written about her are all kept.
+- Effect on her teammates: from the deactivation on, her teammates are not asked to evaluate her and cannot submit a new peer evaluation of her (BR-student-lifecycle, UC-EVA-submit-evaluation), and she no longer counts toward what they owe (BR-submission-owed).
+- Effect on reports: she still appears in a week's course section peer evaluation report when she was evaluated that week, so her past weeks stay on the record (UC-EVA-section-evaluation-report). She no longer receives reminders (BR-submission-owed).
+- No email is sent to the student.
 
-**Related Use Cases:** UC-STU-delete-student: Delete a student; UC-STU-reactivate-student: Reactivate a student
+**Related Use Cases:** UC-STU-delete-student: Delete a student; UC-STU-reactivate-student: Reactivate a student; UC-EVA-submit-evaluation: Submit a peer evaluation for the previous week; UC-EVA-section-evaluation-report: Generate a peer evaluation report of the entire course section
 **Assumptions:**
 **Open Issues:**
 
